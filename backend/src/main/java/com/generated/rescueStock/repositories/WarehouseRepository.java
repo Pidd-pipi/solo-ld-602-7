@@ -1,0 +1,1 @@
+package com.generated.rescueStock.repositories; import java.util.*; import org.springframework.stereotype.Repository; @Repository public class WarehouseRepository { public List<Map<String,Object>> findAll(){ return List.of(Map.of("id",1,"name","应急仓库","status","READY")); } }
