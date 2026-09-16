@@ -41,8 +41,8 @@ public class DispatchTxService {
 
   /** 申请：建单（SUBMITTED）并按批次占用库存。requestId 唯一键是幂等的最后防线。 */
   @Transactional(rollbackFor = Exception.class)
-  public Long createAndHold(DispatchApplyPayload payload, Long userId) {
-    Long orderId = orderRepo.insert(payload.requestId, payload.eventId,
+  public Long createAndHold(DispatchApplyPayload payload, String contentFingerprint, Long userId) {
+    Long orderId = orderRepo.insert(payload.requestId, contentFingerprint, payload.eventId,
         payload.sourceWarehouseId, payload.shelterId, payload.priority, payload.remark, userId);
 
     List<StockReservationService.RequestedLine> lines = new ArrayList<>();

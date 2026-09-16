@@ -70,26 +70,60 @@ public class StockReservationService {
   }
 
   /**
-   * 申请占用：按物资逐个锁定可用批次（FEFO 临期优先），逐批占用并登记去向、写 HOLD 流水。
-   * 任一物资可用量不足，抛 INSUFFICIENT_STOCK，整事务回滚，此前占用全部撤销。
+   * 申请占用。
+   *
+   * 一致性要点：
+   *  - 先把同一物资的多行合并、按物资 id 排序（与请求书写顺序无关）；
+   *  - 用一条 SQL 一次性锁定本单所需全部物资的候选批次，且强制按批次主键 id 升序加锁，
+   *    所有申请持锁顺序一致，明细顺序相反也不会交叉持锁（无死锁）；
+   *  - 占用前先按锁定快照校验每种物资可用总量；不足则在写入任何数据之前抛错，整事务回滚；
+   *  - 逐批 FEFO（临期优先）占用、登记去向、写 HOLD 流水。
    */
   @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
   public List<HeldAllocation> holdForOrder(Long orderId, long warehouseId, List<RequestedLine> lines) {
     String actor = UserContextHolder.actorName();
     List<HeldAllocation> result = new ArrayList<>();
 
+    // 1) 归一化：同物资合并，按物资 id 升序
+    java.util.TreeMap<Long, Integer> needByItem = new java.util.TreeMap<>();
     for (RequestedLine line : lines) {
-      List<Map<String, Object>> batches = batchRepo.lockAvailableByItem(warehouseId, line.supplyItemId);
+      needByItem.merge(line.supplyItemId, line.requestedQty, Integer::sum);
+    }
+
+    // 2) 一次锁定所有候选批次（全局 batch id 升序），消除锁顺序反转
+    List<Map<String, Object>> locked = batchRepo.lockAvailableByItems(warehouseId, new ArrayList<>(needByItem.keySet()));
+
+    for (Map.Entry<Long, Integer> entry : needByItem.entrySet()) {
+      long supplyItemId = entry.getKey();
+      int requestedQty = entry.getValue();
+
+      // 该物资的候选批次，在锁内按 FEFO（临期优先，其次批次 id）排序
+      List<Map<String, Object>> batches = locked.stream()
+          .filter(b -> ((Number) b.get("supply_item_id")).longValue() == supplyItemId)
+          .sorted((x, y) -> {
+            // null（无保质期）排最后；都有保质期则到期早的优先（FEFO）
+            int c = Boolean.compare(expireIsNull(x), expireIsNull(y));
+            if (c != 0) return c;
+            Object ex = x.get("expire_at"), ey = y.get("expire_at");
+            if (ex != null && ey != null) {
+              int cmp = String.valueOf(ex).compareTo(String.valueOf(ey));
+              if (cmp != 0) return cmp;
+            }
+            return Long.compare(((Number) x.get("id")).longValue(), ((Number) y.get("id")).longValue());
+          })
+          .toList();
+
       int availableTotal = batches.stream()
           .mapToInt(b -> toInt(b.get("quantity")) - toInt(b.get("held_quantity"))).sum();
-      if (availableTotal < line.requestedQty) {
+      // 3) 占用前校验：不足直接抛错，此时本单尚未写任何行/去向/流水
+      if (availableTotal < requestedQty) {
         throw BusinessException.of(ErrorCodes.INSUFFICIENT_STOCK, Map.of(
-            "batchNo", "批次组", "itemName", itemName(line.supplyItemId),
-            "need", line.requestedQty, "available", availableTotal));
+            "batchNo", "批次组", "itemName", itemName(supplyItemId),
+            "need", requestedQty, "available", availableTotal));
       }
 
-      int need = line.requestedQty;
-      Long lineId = orderRepo.insertLine(orderId, line.supplyItemId, line.requestedQty);
+      int need = requestedQty;
+      Long lineId = orderRepo.insertLine(orderId, supplyItemId, requestedQty);
 
       for (Map<String, Object> b : batches) {
         if (need == 0) {
@@ -110,7 +144,7 @@ public class StockReservationService {
               Map.of("batchNo", String.valueOf(b.get("batch_no"))));
         }
         allocationRepo.insert(orderId, lineId, batchId, take);
-        ledgerRepo.append(batchId, line.supplyItemId, warehouseId, orderId,
+        ledgerRepo.append(batchId, supplyItemId, warehouseId, orderId,
             LedgerDirection.HOLD, take, quantity, held + take, actor,
             "申请占用 调拨单#" + orderId);
 
@@ -118,11 +152,16 @@ public class StockReservationService {
         need -= take;
       }
       if (need > 0) {
-        // 理论上前面已校验总量；走到这里说明被并发改写，整单回滚
+        // 锁内可用总量本应足够；走到这里说明被异常改写，整单回滚
         throw new BusinessException(ErrorCodes.CONCURRENT_CONFLICT);
       }
     }
     return result;
+  }
+
+  /** null 到期时间（无保质期）在 FEFO 中排在最后。 */
+  private static boolean expireIsNull(Map<String, Object> b) {
+    return b.get("expire_at") == null;
   }
 
   /**

@@ -32,24 +32,45 @@ public class InventoryBatchRepository {
     return jdbc.queryForList(sql);
   }
 
-  /** 锁定某仓库内某物资全部有可用余量的批次（FEFO：临期优先），仅在事务内调用。 */
-  public List<Map<String, Object>> lockAvailableByItem(Long warehouseId, Long supplyItemId) {
+  /**
+   * 一次性锁定一张单所需全部物资的候选批次，并强制按主键 id 升序加锁。
+   *
+   * 关键：所有申请都按同一全局顺序（batch id）拿行锁，与明细顺序无关，
+   * 因此两张“相同物资、明细顺序相反”的并发申请不会出现交叉持锁，杜绝死锁。
+   * FORCE INDEX(PRIMARY) 保证执行计划真的按主键顺序加锁。
+   */
+  public List<Map<String, Object>> lockAvailableByItems(Long warehouseId, List<Long> supplyItemIds) {
+    if (supplyItemIds == null || supplyItemIds.isEmpty()) {
+      return List.of();
+    }
+    String in = String.join(",", supplyItemIds.stream().map(x -> "?").toList());
     return jdbc.queryForList(
-        "SELECT * FROM inventory_batch WHERE warehouse_id = ? AND supply_item_id = ? "
+        "SELECT * FROM inventory_batch FORCE INDEX (PRIMARY) "
+        + "WHERE warehouse_id = ? AND supply_item_id IN (" + in + ") "
         + "AND quantity - held_quantity > 0 AND quality_status <> 'DAMAGED' "
-        + "ORDER BY (expire_at IS NULL), expire_at ASC, id ASC FOR UPDATE",
-        warehouseId, supplyItemId);
+        + "ORDER BY id ASC FOR UPDATE",
+        prepend(warehouseId, supplyItemIds));
   }
 
-  /** 按 id 升序锁定指定批次（回补/出库复核用），仅在事务内调用。 */
+  /** 按 id 升序锁定指定批次（回补/出库复核用），同样强制主键顺序，仅在事务内调用。 */
   public List<Map<String, Object>> lockByIds(List<Long> ids) {
     if (ids == null || ids.isEmpty()) {
       return List.of();
     }
     String in = String.join(",", ids.stream().map(x -> "?").toList());
     return jdbc.queryForList(
-        "SELECT * FROM inventory_batch WHERE id IN (" + in + ") ORDER BY id FOR UPDATE",
+        "SELECT * FROM inventory_batch FORCE INDEX (PRIMARY) WHERE id IN (" + in
+        + ") ORDER BY id ASC FOR UPDATE",
         ids.toArray());
+  }
+
+  private Object[] prepend(Long first, List<Long> rest) {
+    Object[] args = new Object[rest.size() + 1];
+    args[0] = first;
+    for (int i = 0; i < rest.size(); i++) {
+      args[i + 1] = rest.get(i);
+    }
+    return args;
   }
 
   /** 条件占用：可用量足够才成功。返回影响行数（1=成功，0=被抢先/不足）。 */

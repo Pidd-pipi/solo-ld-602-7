@@ -82,7 +82,8 @@ export function useDispatchFlow() {
       ElMessage.success(def.success);
       return true;
     } catch (e) {
-      ElMessage.error(e instanceof RequestError ? errorText(e.code, e.message) : "操作失败");
+      // 业务冲突（含幂等内容冲突）优先展示后端渲染的具体原因（原单号/差异）
+      ElMessage.error(e instanceof RequestError ? (e.message || errorText(e.code)) : "操作失败");
       return false;
     } finally {
       actingId.value = null;
@@ -102,7 +103,7 @@ export function useDispatchFlow() {
       }
       return reactive({ ok: true, idempotent: seen });
     } catch (e) {
-      ElMessage.error(e instanceof RequestError ? errorText(e.code, e.message) : "申请失败");
+      ElMessage.error(e instanceof RequestError ? (e.message || errorText(e.code)) : "申请失败");
       return { ok: false, idempotent: false };
     }
   };

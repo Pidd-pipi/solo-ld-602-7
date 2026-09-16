@@ -30,6 +30,7 @@ public class ErrorHandlerMiddleware {
       case ErrorCodes.RBAC_DENIED -> HttpStatus.FORBIDDEN;
       case ErrorCodes.ORDER_NOT_FOUND, ErrorCodes.BATCH_NOT_FOUND -> HttpStatus.NOT_FOUND;
       case ErrorCodes.ILLEGAL_STATUS_TRANSITION, ErrorCodes.ORDER_DUPLICATE_REQUEST,
+           ErrorCodes.IDEMPOTENT_CONFLICT,
            ErrorCodes.INSUFFICIENT_STOCK, ErrorCodes.BATCH_CONTENDED,
            ErrorCodes.CONCURRENT_CONFLICT, ErrorCodes.LEDGER_IMBALANCE,
            ErrorCodes.ALLOCATION_MISSING, ErrorCodes.WAREHOUSE_MISMATCH, ErrorCodes.LINE_EMPTY ->

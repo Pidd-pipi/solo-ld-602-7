@@ -12,12 +12,13 @@ public class DispatchOrderRepository {
 
   public DispatchOrderRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
-  public Long insert(String requestId, Long eventId, Long warehouseId, Long shelterId,
-                     String priority, String remark, Long requestedBy) {
+  public Long insert(String requestId, String contentFingerprint, Long eventId, Long warehouseId,
+                     Long shelterId, String priority, String remark, Long requestedBy) {
     jdbc.update(
-        "INSERT INTO dispatch_order (request_id, event_id, source_warehouse_id, shelter_id, "
-        + "priority, status, remark, requested_by) VALUES (?,?,?,?,?,?,?,?)",
-        requestId, eventId, warehouseId, shelterId,
+        "INSERT INTO dispatch_order (request_id, content_fingerprint, event_id, source_warehouse_id, shelter_id, "
+        + "priority, status, remark, requested_by) VALUES (?,?,?,?,?,?,?,?,?)",
+        requestId, contentFingerprint == null ? "" : contentFingerprint,
+        eventId, warehouseId, shelterId,
         priority == null ? "NORMAL" : priority, "SUBMITTED",
         remark == null ? "" : remark, requestedBy);
     return jdbc.queryForObject("SELECT LAST_INSERT_ID()", Long.class);

@@ -1,7 +1,6 @@
 package com.generated.rescueStock.services;
 
 import com.generated.rescueStock.constants.ErrorCodes;
-import com.generated.rescueStock.repositories.DispatchLockRepository;
 import com.generated.rescueStock.repositories.DispatchOrderRepository;
 import com.generated.rescueStock.repositories.DisasterEventRepository;
 import com.generated.rescueStock.repositories.ShelterRepository;
@@ -20,7 +19,6 @@ import org.springframework.stereotype.Service;
 public class DispatchOrderService {
 
   private final DispatchOrderRepository orderRepo;
-  private final DispatchLockRepository lockRepo;
   private final DispatchTxService tx;
   private final WarehouseRepository warehouseRepo;
   private final ShelterRepository shelterRepo;
@@ -28,14 +26,12 @@ public class DispatchOrderService {
   private final com.generated.rescueStock.repositories.AllocationRepository allocationRepo;
 
   public DispatchOrderService(DispatchOrderRepository orderRepo,
-                              DispatchLockRepository lockRepo,
                               DispatchTxService tx,
                               WarehouseRepository warehouseRepo,
                               ShelterRepository shelterRepo,
                               DisasterEventRepository eventRepo,
                               com.generated.rescueStock.repositories.AllocationRepository allocationRepo) {
     this.orderRepo = orderRepo;
-    this.lockRepo = lockRepo;
     this.tx = tx;
     this.warehouseRepo = warehouseRepo;
     this.shelterRepo = shelterRepo;
@@ -71,37 +67,64 @@ public class DispatchOrderService {
 
   /**
    * 申请调拨（幂等）。
-   * 同一 requestId 的重复提交直接返回原单，绝不二次占库；
-   * 即使两个相同请求并发，唯一键也只会放行一个，另一个回读原单。
+   *
+   * requestId 标识“同一次申请”，但是否真为同一申请还要看业务内容指纹：
+   *  - 同 requestId 且内容一致（允许明细顺序不同、同物资多行合并后一致）-> 直接返回原单，不二次占库；
+   *  - 同 requestId 但源仓库/避难点/事件/物资数量不同 -> 抛 IDEMPOTENT_CONFLICT，明确拒绝；
+   *  - 同 requestId 并发撞唯一键：待赢家提交后读取并按同一规则判定一致或冲突。
    */
   public Map<String, Object> apply(DispatchApplyPayload payload) {
     validate(payload);
+    String fingerprint = fingerprint(payload);
 
     Map<String, Object> existing = orderRepo.findByRequestId(payload.requestId);
     if (existing != null) {
-      // 重复提交：原封不动返回，库存不再触碰
-      existing.put("_idempotent", true);
-      return existing;
+      return resolveExisting(payload.requestId, fingerprint, existing);
     }
 
     Long userId = com.generated.rescueStock.security.UserContextHolder.userId();
     Long orderId;
     try {
-      orderId = tx.createAndHold(payload, userId);
+      orderId = tx.createAndHold(payload, fingerprint, userId);
     } catch (DuplicateKeyException dup) {
-      // 并发的同一申请抢先插入：唯一键拦住本次插入（库存动作在插入之后，故本次什么都没占）。
-      // 等待赢家事务提交后回读原单，保证“不重复占库”。
+      // 并发的同一 requestId 抢先插入：本次插入被唯一键拦住（库存动作在建单之后，尚未发生），
+      // 等待赢家事务提交后回读，再按内容判定“幂等返回”还是“内容冲突”。
       Map<String, Object> raced = awaitByRequestId(payload.requestId, 50);
       if (raced == null) {
-        // 极端情况下仍读不到，按并发冲突处理（不会有任何占用残留）
+        // 极端情况下仍读不到，按并发冲突处理（本事务什么都没占）
         throw new BusinessException(ErrorCodes.CONCURRENT_CONFLICT);
       }
-      raced.put("_idempotent", true);
-      return raced;
+      return resolveExisting(payload.requestId, fingerprint, raced);
     }
     Map<String, Object> created = orderRepo.findById(orderId);
     created.put("_idempotent", false);
     return created;
+  }
+
+  /** 已存在同 requestId 单据：内容一致幂等返回，内容不同明确冲突。 */
+  private Map<String, Object> resolveExisting(String requestId, String incomingFingerprint,
+                                              Map<String, Object> stored) {
+    String storedFingerprint = String.valueOf(stored.get("content_fingerprint"));
+    if (!incomingFingerprint.equals(storedFingerprint)) {
+      throw new BusinessException(ErrorCodes.IDEMPOTENT_CONFLICT, Map.of(
+          "requestId", requestId,
+          "orderId", stored.get("id"),
+          "reason", com.generated.rescueStock.utils.IdempotencyFingerprint.describeDifference(
+              incomingFingerprint, storedFingerprint)));
+    }
+    stored.put("_idempotent", true);
+    return stored;
+  }
+
+  /** 归一化计算本次申请的内容指纹（与明细顺序无关，同物资多行合并）。 */
+  private String fingerprint(DispatchApplyPayload payload) {
+    List<com.generated.rescueStock.utils.IdempotencyFingerprint.ItemQty> items =
+        payload.lines.stream()
+            .map(l -> new com.generated.rescueStock.utils.IdempotencyFingerprint.ItemQty(
+                l.supplyItemId, l.requestedQty))
+            .toList();
+    return com.generated.rescueStock.utils.IdempotencyFingerprint.build(
+        payload.sourceWarehouseId, payload.shelterId, payload.eventId, items);
   }
 
   public void approve(long orderId, String reason) { tx.transit(orderId, "APPROVE", reason); }

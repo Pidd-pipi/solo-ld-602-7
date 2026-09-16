@@ -12,6 +12,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
   [ERROR_CODES.RATE_LIMITED]: "请求过于频繁，请稍后再试",
   [ERROR_CODES.ORDER_NOT_FOUND]: "调拨单不存在",
   [ERROR_CODES.ORDER_DUPLICATE_REQUEST]: "该申请已提交过，已返回原调拨单，未重复占用库存",
+  [ERROR_CODES.IDEMPOTENT_CONFLICT]: "requestId 已被内容不同的申请占用，请为新申请生成新的 requestId（本次未占用库存）",
   [ERROR_CODES.ILLEGAL_STATUS_TRANSITION]: "当前状态不允许执行该操作",
   [ERROR_CODES.INSUFFICIENT_STOCK]: "可用库存不足，申请未占用任何库存",
   [ERROR_CODES.BATCH_CONTENDED]: "该批次已被其他避难点抢先占用，请刷新后重试",

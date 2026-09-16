@@ -10,6 +10,7 @@ public final class ErrorCodes {
 
   public static final String ORDER_NOT_FOUND = "ORDER_NOT_FOUND";
   public static final String ORDER_DUPLICATE_REQUEST = "ORDER_DUPLICATE_REQUEST";
+  public static final String IDEMPOTENT_CONFLICT = "IDEMPOTENT_CONFLICT";
   public static final String ILLEGAL_STATUS_TRANSITION = "ILLEGAL_STATUS_TRANSITION";
   public static final String BATCH_NOT_FOUND = "BATCH_NOT_FOUND";
   public static final String INSUFFICIENT_STOCK = "INSUFFICIENT_STOCK";

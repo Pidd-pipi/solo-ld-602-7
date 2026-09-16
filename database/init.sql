@@ -113,6 +113,7 @@ DROP TABLE IF EXISTS dispatch_order;
 CREATE TABLE dispatch_order (
   id                  BIGINT PRIMARY KEY AUTO_INCREMENT,
   request_id          VARCHAR(64) NOT NULL UNIQUE,
+  content_fingerprint VARCHAR(255) NOT NULL DEFAULT '',
   event_id            BIGINT NULL,
   source_warehouse_id BIGINT NOT NULL,
   shelter_id          BIGINT NOT NULL,
