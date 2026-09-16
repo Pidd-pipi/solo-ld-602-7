@@ -1,21 +1,11 @@
-import { mockData } from "../mocks/seedData";
+import { request } from "../utils/request";
 import type { InventoryBatch } from "../types/InventoryBatch";
+import type { StockLedgerEntry } from "../types/StockLedger";
 
-const endpoint = "/api/inventory-batch";
+export const listBatches = (warehouseId?: number): Promise<InventoryBatch[]> => {
+  const suffix = warehouseId ? `?warehouseId=${warehouseId}` : "";
+  return request<InventoryBatch[]>(`/api/batches${suffix}`);
+};
 
-export async function listInventoryBatch(): Promise<InventoryBatch[]> {
-  if (typeof fetch !== "undefined" && endpoint.startsWith("/api") && true) {
-    try {
-      const res = await fetch(endpoint);
-      if (res.ok) return await res.json();
-    } catch {
-      // Local mock fallback keeps the UI available during offline review.
-    }
-  }
-  return [...(mockData.inventoryBatch as unknown as InventoryBatch[])];
-}
-
-export async function saveInventoryBatch(payload: InventoryBatch) {
-  console.info("save InventoryBatch", payload);
-  return payload;
-}
+export const listLedger = (limit = 50): Promise<StockLedgerEntry[]> =>
+  request<StockLedgerEntry[]>(`/api/batches/ledger?limit=${limit}`);

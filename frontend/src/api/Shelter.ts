@@ -1,21 +1,23 @@
-import { mockData } from "../mocks/seedData";
+import { request } from "../utils/request";
 import type { Shelter } from "../types/Shelter";
 
-const endpoint = "/api/shelter";
-
-export async function listShelter(): Promise<Shelter[]> {
-  if (typeof fetch !== "undefined" && endpoint.startsWith("/api") && true) {
-    try {
-      const res = await fetch(endpoint);
-      if (res.ok) return await res.json();
-    } catch {
-      // Local mock fallback keeps the UI available during offline review.
-    }
-  }
-  return [...(mockData.shelter as unknown as Shelter[])];
+export interface ReceiveRecord {
+  id: number;
+  status: string;
+  priority: string;
+  dispatched_at: string | null;
+  received_at: string | null;
+  warehouse_name: string;
+  total_requested: number;
 }
 
-export async function saveShelter(payload: Shelter) {
-  console.info("save Shelter", payload);
-  return payload;
-}
+export const listShelters = (): Promise<Shelter[]> => request<Shelter[]>("/api/shelters");
+
+export const updateShelter = (id: number, body: Partial<Shelter>): Promise<{ updated: boolean }> =>
+  request<{ updated: boolean }>(`/api/shelters/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(body)
+  });
+
+export const listReceiveRecords = (shelterId: number): Promise<ReceiveRecord[]> =>
+  request<ReceiveRecord[]>(`/api/shelters/${shelterId}/receive-records`);

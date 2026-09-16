@@ -1,1 +1,7 @@
-<template><div class="empty">暂无数据</div></template>
+<script setup lang="ts">
+defineProps<{ description?: string; imageSize?: number }>();
+</script>
+
+<template>
+  <el-empty :description="description ?? '暂无数据'" :image-size="imageSize ?? 80" />
+</template>
