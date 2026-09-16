@@ -12,7 +12,7 @@ const ACTION_META: Record<string, { text: string; type: "primary" | "success" | 
   OUTBOUND: { text: "出库 · 按批次扣减", type: "warning" },
   RECEIVE: { text: "签收确认", type: "success" },
   REFUSE: { text: "拒签 · 原批次回补", type: "danger" },
-  CANCEL: { text: "撤销 · 原批次回补", type: "info" }
+  CANCEL: { text: "撤销 · 释放占用 / 原批次回补", type: "info" }
 };
 
 const nodes = computed(() =>

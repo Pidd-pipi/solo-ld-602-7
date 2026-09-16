@@ -32,7 +32,7 @@ public enum DispatchStatus {
       DRAFT, EnumSet.of(SUBMITTED, CANCELLED),
       SUBMITTED, EnumSet.of(APPROVED, REJECTED, CANCELLED),
       APPROVED, EnumSet.of(DISPATCHED, CANCELLED),
-      DISPATCHED, EnumSet.of(RECEIVED, REFUSED)
+      DISPATCHED, EnumSet.of(RECEIVED, REFUSED, CANCELLED)
   );
 
   private static final Map<DispatchStatus, String> LABELS = Map.of(

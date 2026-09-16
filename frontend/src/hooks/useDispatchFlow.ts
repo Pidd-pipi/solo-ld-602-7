@@ -25,13 +25,13 @@ const ACTION_DEFS: Record<string, ActionDef> = {
   outbound: { key: "outbound", label: "出库", success: "已按批次扣减并登记去向" },
   receive: { key: "receive", label: "签收确认", success: "避难点已签收" },
   refuse: { key: "refuse", label: "拒签", danger: true, needReason: true, success: "已拒签，原批次、原数量已回补" },
-  cancel: { key: "cancel", label: "撤销", danger: true, needReason: true, success: "已撤销，库存已按原批次回补" }
+  cancel: { key: "cancel", label: "撤销", danger: true, needReason: true, success: "已撤销：未出库部分释放占用，已出库部分按原批次回补" }
 };
 
 const NEXT_ACTIONS: Record<string, DispatchActionName[]> = {
   SUBMITTED: ["approve", "reject", "cancel"],
   APPROVED: ["outbound", "cancel"],
-  DISPATCHED: ["receive", "refuse"]
+  DISPATCHED: ["receive", "refuse", "cancel"]
 };
 
 /** 调拨闭环动作编排：权限过滤、原因输入、统一报错，动作后联动刷新列表/批次/态势。 */

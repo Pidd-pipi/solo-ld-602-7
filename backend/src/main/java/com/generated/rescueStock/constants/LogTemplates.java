@@ -49,7 +49,7 @@ public final class LogTemplates {
   public static final String DISPATCH_REFUSE =
       "调拨单 {orderId} 拒签：{reason}，已按原批次、原数量回补";
   public static final String DISPATCH_CANCEL =
-      "调拨单 {orderId} 撤销：{reason}，已按原批次、原数量回补";
+      "调拨单 {orderId} 撤销：{reason}，未出库部分释放占用、已出库部分按原批次原数量回补";
 
   public static final List<String> DISPATCH_ORDER = List.of(
       DISPATCH_CREATE, DISPATCH_SUBMIT, DISPATCH_APPROVE, DISPATCH_REJECT);

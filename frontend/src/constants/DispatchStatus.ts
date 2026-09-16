@@ -43,7 +43,7 @@ export const DispatchStatusFlow: Record<DispatchStatus, DispatchStatus[]> = {
   DRAFT: ["SUBMITTED", "CANCELLED"],
   SUBMITTED: ["APPROVED", "REJECTED", "CANCELLED"],
   APPROVED: ["DISPATCHED", "CANCELLED"],
-  DISPATCHED: ["RECEIVED", "REFUSED"],
+  DISPATCHED: ["RECEIVED", "REFUSED", "CANCELLED"],
   RECEIVED: [],
   REJECTED: [],
   REFUSED: [],

@@ -40,20 +40,21 @@ docker compose down -v && docker compose up -d
 ### 状态机（DispatchStatus）
 
 ```
-                申请占库            审批(不扣库存)
-   (新建) ──▶ SUBMITTED ──────▶ APPROVED ──────▶ DISPATCHED ──────▶ RECEIVED
-                │  │                │                │
-                │  └─驳回 REJECTED   └─撤销 CANCELLED  └─拒签 REFUSED
-                └────撤销 CANCELLED
-   终态：RECEIVED / REJECTED / REFUSED / CANCELLED
+                申请占库            审批(不扣库存)        出库(按批次扣减)
+   (新建) ──▶ SUBMITTED ──────▶ APPROVED ──────────▶ DISPATCHED ──────▶ RECEIVED(终态)
+                │  │                │                    │  │
+   未出库→释放占用  │                │                    │  ├─拒签 REFUSED：原批次物理回补
+   已出库→原批次回补└─驳回 REJECTED   └─撤销 CANCELLED      └─撤销 CANCELLED：按去向表原批次回补
+   RECEIVED 为终态，签收后不可再撤销/拒签/出库
 ```
 
 - **申请 SUBMITTED**：在单个事务内建单并按批次（FEFO 临期优先）**占用可用库存** `held_quantity += n`，登记批次去向 `dispatch_batch_allocation(HELD)`，写 `HOLD` 流水。
 - **审批 APPROVED / 驳回 REJECTED**：通过**完全不碰库存**；驳回则按原批次释放占用（`RELEASE`）。
 - **出库 DISPATCHED**：严格按申请时登记的批次去向扣减，`quantity -= n` 且 `held_quantity -= n` 同步推进，去向置 `OUT`，回填每行出库量，写 `OUTBOUND` 流水。
-- **签收 RECEIVED**：终态，不改变库存（物资已在避难点）。
-- **拒签 REFUSED（出库后）**：按原批次、原数量做**物理回补** `quantity += n`，去向置 `RETURNED`，写 `RETURN` 流水。
-- **撤销 CANCELLED**：未出库（SUBMITTED/APPROVED）释放占用；出库后不允许撤销，只能拒签回补。
+- **签收 RECEIVED**：终态，不改变库存（物资已在避难点）；签收后任何撤销/拒签/出库都返回 409。
+- **拒签 REFUSED / 撤销 CANCELLED（出库后）**：按原批次、原数量做**物理回补** `quantity += n`，去向置 `RETURNED`，写 `RETURN` 流水。
+- **撤销 CANCELLED（未出库：SUBMITTED/APPROVED）**：仅释放占用 `held_quantity -= n`（`RELEASE`），物理库存本就未动。
+- 撤销与拒签都对订单行先加 `FOR UPDATE` 锁并以状态 CAS 推进，因此**并发时只有一个成功**，失败方读到终态直接 409，不会重复回补。
 
 ### 库存模型
 
